@@ -7,6 +7,7 @@ import warnings
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Hashable, Sequence
 from dataclasses import is_dataclass
+from datetime import timedelta
 from functools import partial
 from inspect import isclass, isfunction, ismethod, signature
 from types import FunctionType
@@ -45,6 +46,7 @@ from langgraph._internal._fields import (
 )
 from langgraph._internal._pydantic import create_model
 from langgraph._internal._runnable import coerce_to_runnable
+from langgraph._internal._timeout import coerce_timeout
 from langgraph._internal._typing import EMPTY_SEQ, MISSING, DeprecatedKwargs
 from langgraph.channels.base import BaseChannel
 from langgraph.channels.binop import BinaryOperatorAggregate
@@ -301,6 +303,7 @@ class StateGraph(Generic[StateT, ContextT, InputT, OutputT]):
         cache_policy: CachePolicy | None = None,
         error_handler: StateNode[Any, ContextT] | None = None,
         destinations: dict[str, str] | tuple[str, ...] | None = None,
+        timeout: float | timedelta | None = None,
         **kwargs: Unpack[DeprecatedKwargs],
     ) -> Self:
         """Add a new node to the `StateGraph`, input schema is inferred as the state schema.
@@ -369,6 +372,7 @@ class StateGraph(Generic[StateT, ContextT, InputT, OutputT]):
         cache_policy: CachePolicy | None = None,
         error_handler: StateNode[Any, ContextT] | None = None,
         destinations: dict[str, str] | tuple[str, ...] | None = None,
+        timeout: float | timedelta | None = None,
         **kwargs: Unpack[DeprecatedKwargs],
     ) -> Self:
         """Add a new node to the `StateGraph` where input schema is specified.
@@ -442,6 +446,7 @@ class StateGraph(Generic[StateT, ContextT, InputT, OutputT]):
         cache_policy: CachePolicy | None = None,
         error_handler: StateNode[Any, ContextT] | None = None,
         destinations: dict[str, str] | tuple[str, ...] | None = None,
+        timeout: float | timedelta | None = None,
         **kwargs: Unpack[DeprecatedKwargs],
     ) -> Self:
         """Add a new node to the `StateGraph`, input schema is inferred as the state schema.
@@ -510,6 +515,7 @@ class StateGraph(Generic[StateT, ContextT, InputT, OutputT]):
         cache_policy: CachePolicy | None = None,
         error_handler: StateNode[Any, ContextT] | None = None,
         destinations: dict[str, str] | tuple[str, ...] | None = None,
+        timeout: float | timedelta | None = None,
         **kwargs: Unpack[DeprecatedKwargs],
     ) -> Self:
         """Add a new node to the `StateGraph`, input schema is specified.
@@ -585,6 +591,7 @@ class StateGraph(Generic[StateT, ContextT, InputT, OutputT]):
         cache_policy: CachePolicy | None = None,
         error_handler: StateNode[Any, ContextT] | None = None,
         destinations: dict[str, str] | tuple[str, ...] | None = None,
+        timeout: float | timedelta | None = None,
         **kwargs: Unpack[DeprecatedKwargs],
     ) -> Self:
         """Add a new node to the `StateGraph`.
@@ -615,6 +622,12 @@ class StateGraph(Generic[StateT, ContextT, InputT, OutputT]):
                 !!! warning
 
                     This is only used for graph rendering and doesn't have any effect on the graph execution.
+            timeout: Maximum wall-clock duration for a single invocation of this
+                node, in seconds (or as a `timedelta`). When exceeded, a
+                [`NodeTimeoutError`][langgraph.errors.NodeTimeoutError] is raised
+                and the retry policy (if any) decides whether to retry. Timeouts
+                are supported only for async nodes; sync nodes cannot be safely
+                cancelled in-process.
 
         Example:
             ```python
@@ -668,6 +681,7 @@ class StateGraph(Generic[StateT, ContextT, InputT, OutputT]):
             )
             if input_schema is None:
                 input_schema = cast(type[NodeInputT] | None, input_)
+        timeout = coerce_timeout(timeout)
 
         if not isinstance(node, str):
             action = node
@@ -783,6 +797,7 @@ class StateGraph(Generic[StateT, ContextT, InputT, OutputT]):
                 error_handler_node=handler_node_name,
                 ends=ends,
                 defer=defer,
+                timeout=timeout,
             )
         elif inferred_input_schema is not None:
             self.nodes[node] = StateNodeSpec(
@@ -794,6 +809,7 @@ class StateGraph(Generic[StateT, ContextT, InputT, OutputT]):
                 error_handler_node=handler_node_name,
                 ends=ends,
                 defer=defer,
+                timeout=timeout,
             )
         else:
             self.nodes[node] = StateNodeSpec[StateT, ContextT](
@@ -805,6 +821,7 @@ class StateGraph(Generic[StateT, ContextT, InputT, OutputT]):
                 error_handler_node=handler_node_name,
                 ends=ends,
                 defer=defer,
+                timeout=timeout,
             )
 
         input_schema = input_schema or inferred_input_schema
@@ -1367,6 +1384,7 @@ class CompiledStateGraph(
                 is_error_handler=node.is_error_handler,
                 error_handler_node=node.error_handler_node,
                 bound=node.runnable,  # type: ignore[arg-type]
+                timeout=node.timeout,
             )
         else:
             raise RuntimeError

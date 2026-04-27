@@ -92,3 +92,4 @@ class StateNodeSpec(Generic[NodeInputT, ContextT]):
     error_handler_node: str | None = None
     ends: tuple[str, ...] | dict[str, str] | None = EMPTY_SEQ
     defer: bool = False
+    timeout: float | None = None
